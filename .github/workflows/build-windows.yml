@@ -1,22 +1,27 @@
 name: Build AyuGram Desktop (Windows)
 
 on:
-  workflow_dispatch:     # кнопка "Run workflow" вручную
+  workflow_dispatch:
   push:
-    branches: [ dev ]
+    branches: [ dev, main ]
   pull_request:
-    branches: [ dev ]
+    branches: [ dev, main ]
 
 jobs:
   build:
-    runs-on: windows-2022   # более стабильная версия, чем windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+
+      # ←←← ЭТО САМОЕ ВАЖНОЕ ИСПРАВЛЕНИЕ
+      - name: Setup MSVC Developer Command Prompt (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Prepare build environment
         shell: cmd
@@ -36,7 +41,7 @@ jobs:
         shell: cmd
         run: |
           cd out
-          cmake --build . --config Release --target Telegram -j 4 -- /maxcpucount
+          cmake --build . --config Release --target Telegram -j 3 -- /maxcpucount
 
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
