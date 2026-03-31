@@ -1,0 +1,46 @@
+name: Build AyuGram Desktop (Windows)
+
+on:
+  workflow_dispatch:     # кнопка "Run workflow" вручную
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+  build:
+    runs-on: windows-2022   # более стабильная версия, чем windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Prepare build environment
+        shell: cmd
+        run: |
+          cd Telegram\build\prepare
+          call win.bat
+
+      - name: Configure CMake
+        shell: cmd
+        run: |
+          cd Telegram
+          configure.bat x64 ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      - name: Build Release
+        shell: cmd
+        run: |
+          cd out
+          cmake --build . --config Release --target Telegram -j 4 -- /maxcpucount
+
+      - name: Upload AyuGram.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-Release
+          path: out/Release/Telegram.exe
+          if-no-files-found: error
