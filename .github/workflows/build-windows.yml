@@ -12,60 +12,73 @@ jobs:
     runs-on: windows-2022
 
     steps:
+      # 📥 Клонирование
       - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # Кэш (ускоряет сборку)
-      - name: Cache build dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            Telegram/build
-            Telegram/out
-          key: ${{ runner.os }}-tdesktop-${{ hashFiles('**/*.bat', '**/*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-tdesktop-
-
-      # Установка Python (иногда требуется для Telegram build scripts)
+      # 🐍 Python (нужен для скриптов Telegram)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Подготовка окружения + win.bat В ОДНОМ шаге (ВАЖНО)
+      # ⚙️ PREPARE (главный фикс)
       - name: Prepare build environment
         shell: cmd
         run: |
-          echo Initializing MSVC...
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          echo ============================
+          echo LOCATING VISUAL STUDIO
+          echo ============================
 
-          echo Running prepare script...
+          IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          ) ELSE IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) ELSE (
+            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          )
+
+          echo Using: %VCVARS%
+
+          call %VCVARS%
+
+          echo ============================
+          echo MSVC CHECK
+          echo ============================
+
+          where cl
+          cl
+
+          echo ============================
+          echo RUNNING win.bat
+          echo ============================
+
           cd Telegram\build\prepare
           call win.bat
 
-      # Конфигурация
+      # 🔧 CONFIGURE
       - name: Configure CMake
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          call %VCVARS%
 
           cd Telegram
           configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      # Сборка
+      # 🏗 BUILD
       - name: Build Release
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          call %VCVARS%
 
           cd out
           cmake --build . --config Release --target Telegram -- /maxcpucount
 
-      # Загрузка артефакта
+      # 📦 ARTIFACT
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
         with:
