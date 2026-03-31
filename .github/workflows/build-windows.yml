@@ -1,7 +1,6 @@
 name: Build AyuGram
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
@@ -9,40 +8,52 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # 📥 Клонируем с сабмодулями
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      # 🐍 Python (некоторые скрипты требуют)
+      - name: Setup Python
+        uses: actions/setup-python@v5
 
-      - name: Cache build
-        uses: actions/cache@v4
-        with:
-          path: |
-            out
-          key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+      # 🧰 Зависимости
+      - name: Install dependencies
+        run: |
+          choco install strawberryperl nasm -y
 
-      - name: Configure CMake
+      # ⚙️ Указываем Qt (ВАЖНО)
+      - name: Set Qt path
+        run: |
+          echo "CMAKE_PREFIX_PATH=D:/a/AyuGramDesktop/AyuGramDesktop/Libraries/win64/qt_5.15.18" >> $env:GITHUB_ENV
+
+      # 🏗️ Конфигурируем
+      - name: Configure
         run: |
           cmake -S . -B out -DCMAKE_BUILD_TYPE=Release
 
+      # 🔨 Билдим
       - name: Build
         run: |
-          cmake --build out --config Release --parallel 2
+          cmake --build out --config Release --parallel
 
-      - name: Show output (debug)
+      # 🔍 Ищем любой .exe
+      - name: Find EXE
+        id: find_exe
+        shell: powershell
         run: |
-          echo "=== OUT DIR ==="
-          dir out /s
+          $exe = Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object -First 1
+          if (-not $exe) {
+            Write-Error "No exe found"
+            exit 1
+          }
+          echo "exe_path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          echo "Found EXE: $($exe.FullName)"
 
-      - name: Find executable
-        run: |
-          dir /s AyuGram.exe
-
-      - name: Upload artifact
+      # 📦 Загружаем артефакт
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram
-          path: "**/AyuGram.exe"
+          name: build-exe
+          path: ${{ steps.find_exe.outputs.exe_path }}
