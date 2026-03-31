@@ -4,37 +4,38 @@ on:
   workflow_dispatch:
   push:
     branches: [ dev, main ]
-  pull_request:
-    branches: [ dev, main ]
 
 jobs:
   build:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout code with submodules
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      # Более надёжная настройка Native Tools Command Prompt
-      - name: Setup Visual Studio Developer Command Prompt (x64)
+      - name: Setup MSVC (x64)
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-          sdk: 10.0.26100.0   # актуальная версия SDK
 
-      - name: Prepare build environment
+      - name: Prepare and Configure
         shell: cmd
         run: |
+          :: Navigate to the prepare directory
           cd Telegram\build\prepare
+          
+          :: Run win.bat. 
+          :: Note: If it still fails, we 'call' it to keep variables in the current session
           call win.bat
-
-      - name: Configure CMake
-        shell: cmd
-        run: |
-          cd Telegram
-          configure.bat x64 ^
+          
+          cd ..\..
+          
+          :: Now run the configure script
+          :: Using ^ for line breaks in CMD
+          call configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
@@ -42,11 +43,4 @@ jobs:
         shell: cmd
         run: |
           cd out
-          cmake --build . --config Release --target Telegram -j 2 -- /maxcpucount
-
-      - name: Upload AyuGram.exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: AyuGram-Release
-          path: out/Release/Telegram.exe
-          if-no-files-found: error
+          cmake --build . --config Release --target Telegram -j 2
