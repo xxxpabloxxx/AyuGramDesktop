@@ -1,59 +1,90 @@
-name: Build AyuGram
+name: Build AyuGram Desktop (Windows)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, dev ]
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+
+    env:
+      NUMBER_OF_PROCESSORS: 2
 
     steps:
-      # 📥 Клонируем с сабмодулями
-      - name: Checkout
+      # 📥 Клонирование
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 🐍 Python (некоторые скрипты требуют)
+      # 🐍 Python
       - name: Setup Python
         uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      # 🧰 Зависимости
-      - name: Install dependencies
-        run: |
-          choco install strawberryperl nasm -y
-
-      # ⚙️ Указываем Qt (ВАЖНО)
-      - name: Set Qt path
-        run: |
-          echo "CMAKE_PREFIX_PATH=D:/a/AyuGramDesktop/AyuGramDesktop/Libraries/win64/qt_5.15.18" >> $env:GITHUB_ENV
-
-      # 🏗️ Конфигурируем
-      - name: Configure
-        run: |
-          cmake -S . -B out -DCMAKE_BUILD_TYPE=Release
-
-      # 🔨 Билдим
-      - name: Build
-        run: |
-          cmake --build out --config Release --parallel
-
-      # 🔍 Ищем любой .exe
-      - name: Find EXE
-        id: find_exe
+      # ⚙️ Зависимости
+      - name: Install dependencies (Perl + NASM)
         shell: powershell
         run: |
-          $exe = Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object -First 1
-          if (-not $exe) {
-            Write-Error "No exe found"
-            exit 1
-          }
-          echo "exe_path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
-          echo "Found EXE: $($exe.FullName)"
+          choco install strawberryperl -y
+          choco install nasm -y
 
-      # 📦 Загружаем артефакт
-      - name: Upload EXE
+      # 💣 Build
+      - name: Full Build (MSVC + Prepare + Build)
+        shell: cmd
+        run: |
+          echo ============================
+          echo FINDING VISUAL STUDIO
+          echo ============================
+
+          IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          ) ELSE IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          ) ELSE (
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          )
+
+          echo ============================
+          echo MSVC CHECK
+          echo ============================
+
+          where cl
+          cl
+
+          echo ============================
+          echo PREPARE
+          echo ============================
+
+          cd Telegram\build\prepare
+          call win.bat
+
+          echo ============================
+          echo CONFIGURE
+          echo ============================
+
+          cd ..\..\..
+          cd Telegram
+
+          configure.bat x64 ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+          echo ============================
+          echo BUILD
+          echo ============================
+
+          cd ..\out
+          cmake --build . --config Release --target Telegram -- /maxcpucount:2
+
+      # 📦 Артефакты (ВСЕ .exe)
+      - name: Upload all executables
         uses: actions/upload-artifact@v4
         with:
-          name: build-exe
-          path: ${{ steps.find_exe.outputs.exe_path }}
+          name: AyuGram-Release
+          path: |
+            out/**/*.exe
+          if-no-files-found: error
