@@ -4,43 +4,71 @@ on:
   workflow_dispatch:
   push:
     branches: [ dev, main ]
+  pull_request:
+    branches: [ dev, main ]
 
 jobs:
   build:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout code
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
-      - name: Setup MSVC (x64)
-        uses: ilammy/msvc-dev-cmd@v1
+      # Кэш (ускоряет сборку)
+      - name: Cache build dependencies
+        uses: actions/cache@v4
         with:
-          arch: x64
+          path: |
+            Telegram/build
+            Telegram/out
+          key: ${{ runner.os }}-tdesktop-${{ hashFiles('**/*.bat', '**/*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-tdesktop-
 
-      - name: Prepare and Configure
+      # Установка Python (иногда требуется для Telegram build scripts)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Подготовка окружения + win.bat В ОДНОМ шаге (ВАЖНО)
+      - name: Prepare build environment
         shell: cmd
         run: |
-          :: Navigate to the prepare directory
+          echo Initializing MSVC...
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+
+          echo Running prepare script...
           cd Telegram\build\prepare
-          
-          :: Run win.bat. 
-          :: Note: If it still fails, we 'call' it to keep variables in the current session
           call win.bat
-          
-          cd ..\..
-          
-          :: Now run the configure script
-          :: Using ^ for line breaks in CMD
-          call configure.bat x64 ^
+
+      # Конфигурация
+      - name: Configure CMake
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+
+          cd Telegram
+          configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
+      # Сборка
       - name: Build Release
         shell: cmd
         run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+
           cd out
-          cmake --build . --config Release --target Telegram -j 2
+          cmake --build . --config Release --target Telegram -- /maxcpucount
+
+      # Загрузка артефакта
+      - name: Upload AyuGram.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-Release
+          path: out/Release/Telegram.exe
+          if-no-files-found: error
