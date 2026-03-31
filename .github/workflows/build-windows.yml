@@ -12,16 +12,17 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout code
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # ←←← ЭТО САМОЕ ВАЖНОЕ ИСПРАВЛЕНИЕ
-      - name: Setup MSVC Developer Command Prompt (x64)
+      # Более надёжная настройка Native Tools Command Prompt
+      - name: Setup Visual Studio Developer Command Prompt (x64)
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+          sdk: 10.0.26100.0   # актуальная версия SDK
 
       - name: Prepare build environment
         shell: cmd
@@ -41,7 +42,7 @@ jobs:
         shell: cmd
         run: |
           cd out
-          cmake --build . --config Release --target Telegram -j 3 -- /maxcpucount
+          cmake --build . --config Release --target Telegram -j 2 -- /maxcpucount
 
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
