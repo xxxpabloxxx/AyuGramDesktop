@@ -3,13 +3,14 @@ name: Build AyuGram Desktop (Windows)
 on:
   workflow_dispatch:
   push:
-    branches: [ dev, main ]
-  pull_request:
-    branches: [ dev, main ]
+    branches: [ main, dev ]
 
 jobs:
   build:
     runs-on: windows-2022
+
+    env:
+      NUMBER_OF_PROCESSORS: 2
 
     steps:
       # 📥 Клонирование
@@ -18,31 +19,34 @@ jobs:
         with:
           submodules: recursive
 
-      # 🐍 Python (нужен для скриптов Telegram)
+      # 🐍 Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # ⚙️ PREPARE (главный фикс)
-      - name: Prepare build environment
+      # ⚙️ Установка зависимостей (КРИТИЧНО)
+      - name: Install dependencies (Perl + NASM)
+        shell: powershell
+        run: |
+          choco install strawberryperl -y
+          choco install nasm -y
+
+      # 💣 ВСЁ В ОДНОМ ШАГЕ (чтобы не терялось окружение)
+      - name: Full Build (MSVC + Prepare + Build)
         shell: cmd
         run: |
           echo ============================
-          echo LOCATING VISUAL STUDIO
+          echo FINDING VISUAL STUDIO
           echo ============================
 
           IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
-            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           ) ELSE IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
-            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
           ) ELSE (
-            set VCVARS="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
           )
-
-          echo Using: %VCVARS%
-
-          call %VCVARS%
 
           echo ============================
           echo MSVC CHECK
@@ -52,33 +56,31 @@ jobs:
           cl
 
           echo ============================
-          echo RUNNING win.bat
+          echo PREPARE (win.bat)
           echo ============================
 
           cd Telegram\build\prepare
           call win.bat
 
-      # 🔧 CONFIGURE
-      - name: Configure CMake
-        shell: cmd
-        run: |
-          call %VCVARS%
+          echo ============================
+          echo CONFIGURE
+          echo ============================
 
+          cd ..\..\..
           cd Telegram
+
           configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      # 🏗 BUILD
-      - name: Build Release
-        shell: cmd
-        run: |
-          call %VCVARS%
+          echo ============================
+          echo BUILD
+          echo ============================
 
-          cd out
-          cmake --build . --config Release --target Telegram -- /maxcpucount
+          cd ..\out
+          cmake --build . --config Release --target Telegram -- /maxcpucount:2
 
-      # 📦 ARTIFACT
+      # 📦 Артефакт
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
         with:
