@@ -1,8 +1,10 @@
-name: Build AyuGram Desktop (Windows FIXED)
+name: Build AyuGram Desktop (Windows)
 
 on:
   workflow_dispatch:
   push:
+    branches: [ main, dev ]
+  pull_request:
     branches: [ main, dev ]
 
 jobs:
@@ -20,31 +22,45 @@ jobs:
           fetch-depth: 0
 
       # =========================
-      # HARD SUBMODULE FIX (КЛЮЧЕВОЕ)
+      # УЛУЧШЕННЫЙ FIX SUBMODULES (решает проблему с ada)
       # =========================
       - name: Fix submodules (CRITICAL)
         shell: cmd
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive --force
+          git submodule update --init --recursive --force --depth=1
           git submodule foreach --recursive git reset --hard
           git submodule foreach --recursive git clean -xfd
+          
+          echo "=== Extra pass for cmake/external ==="
+          git submodule update --init --recursive --force Telegram/cmake/external
 
       # =========================
-      # MSVC
+      # Проверка наличия ada (для отладки)
+      # =========================
+      - name: Check ada directory
+        shell: cmd
+        run: |
+          echo "=== Checking Telegram/cmake/external/ada ==="
+          dir Telegram\cmake\external\ada
+          echo "=== All external submodules ==="
+          dir Telegram\cmake\external
+
+      # =========================
+      # MSVC Environment
       # =========================
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       # =========================
-      # CMAKE + NINJA
+      # Install CMake + Ninja
       # =========================
       - name: Install build tools
         run: |
           choco install cmake ninja -y
 
       # =========================
-      # QT6 (ОБЯЗАТЕЛЬНО)
+      # Install Qt 6.6.1
       # =========================
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
@@ -52,40 +68,37 @@ jobs:
           version: 6.6.1
           arch: win64_msvc2019_64
           modules: qt5compat
+          # cache: true   # можно включить для ускорения повторных сборок
 
       # =========================
-      # DEBUG (проверка ada)
-      # =========================
-      - name: Check ada exists
-        shell: cmd
-        run: |
-          dir Telegram\cmake\external\ada
-
-      # =========================
-      # CONFIGURE
+      # Configure CMake
       # =========================
       - name: Configure
         shell: cmd
         run: |
           cmake -S . -B build -G "Ninja" ^
             -DCMAKE_PREFIX_PATH=%Qt6_DIR% ^
-            -D TDESKTOP_API_ID=2040 ^
-            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+            -DTDESKTOP_API_ID=2040 ^
+            -DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
+            -DDESKTOP_APP_USE_PACKAGED=OFF ^
+            -DCMAKE_C_COMPILER=cl ^
+            -DCMAKE_CXX_COMPILER=cl
 
       # =========================
-      # BUILD
+      # Build Telegram
       # =========================
       - name: Build
         shell: cmd
         run: |
-          cmake --build build --target Telegram -- -j 4
+          cmake --build build --target Telegram --config RelWithDebInfo -- -j %NUMBER_OF_PROCESSORS%
 
       # =========================
-      # ARTIFACT
+      # Upload artifact
       # =========================
-      - name: Upload artifact
+      - name: Upload AyuGram Windows
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Windows
+          name: AyuGram-Desktop-Windows
           path: build/Telegram.exe
           if-no-files-found: error
