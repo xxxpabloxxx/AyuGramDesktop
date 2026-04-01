@@ -20,7 +20,7 @@ jobs:
         run: |
           :: 1. Инициализация через прямой путь (VS 2022 Community)
           :: Если у тебя версия Pro или Enterprise, поменяй Community на свою в пути ниже
-          set "VCVARS=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          set "VCVARS=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
           
           if exist "%VCVARS%" (
               call "%VCVARS%"
