@@ -11,91 +11,57 @@ jobs:
 
     env:
       NUMBER_OF_PROCESSORS: 2
+      # Убираем желтый варнинг про Node.js
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 📥 Клонирование
       - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 🐍 Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # ⚙️ Зависимости
       - name: Install dependencies (Perl + NASM)
         shell: powershell
+        # --no-progress убирает спам в логах при скачивании
         run: |
-          choco install strawberryperl -y
-          choco install nasm -y
+          choco install strawberryperl nasm -y --no-progress
 
-      # 💣 Build
-      # 💣 Build
-      - name: Full Build (MSVC + Prepare + Build)
+      - name: Full Build (Prepare + Configure + Build)
         shell: cmd
         run: |
-          echo ============================
-          echo FINDING VISUAL STUDIO
-          echo ============================
-
+          :: 1. Активация окружения MSVC (без лишнего вывода)
           IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
           ) ELSE IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul
           ) ELSE (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
           )
 
-          echo ============================
-          echo MSVC CHECK
-          echo ============================
-
-          where cl
-          cl
-
-          echo ============================
-          echo PREPARE
-          echo ============================
-
+          :: 2. Подготовка
           cd Telegram\build\prepare
           call win.bat
 
-          echo ============================
-          echo CONFIGURE
-          echo ============================
-
+          :: 3. Конфигурация
           cd ..\..\..
           cd Telegram
-
-          :: ДОБАВЛЕН CALL ВОТ ЗДЕСЬ 👇
           call configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-          echo ============================
-          echo BUILD
-          echo ============================
-
+          :: 4. Сборка (добавлен /v:m для минимальных логов)
           cd ..\out
-          cmake --build . --config Release --target Telegram -- /maxcpucount:4
+          cmake --build . --config Release --target Telegram -- /maxcpucount:2 /verbosity:minimal
 
-      # 📦 Артефакты
-      - name: Upload all executables
+      - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Release
-          # Изменен путь, чтобы брать только собранный клиент 👇
+          # Забираем только готовый экзешник, без мусора
           path: out/Release/*.exe
-          if-no-files-found: error
-
-      # 📦 Артефакты (ВСЕ .exe)
-      - name: Upload all executables
-        uses: actions/upload-artifact@v4
-        with:
-          name: AyuGram-Release
-          path: |
-            out/**/*.exe
           if-no-files-found: error
