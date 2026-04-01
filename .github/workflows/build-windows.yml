@@ -10,7 +10,7 @@ jobs:
     runs-on: self-hosted
 
     env:
-      NUMBER_OF_PROCESSORS: 2
+      NUMBER_OF_PROCESSORS: 4
       # Убираем желтый варнинг про Node.js
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
