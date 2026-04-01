@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop (Windows FULL FIX)
+name: Build AyuGram Desktop (Windows FIXED)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
 
     steps:
       # =========================
-      # CHECKOUT (ВАЖНО)
+      # CHECKOUT
       # =========================
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,7 +19,10 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Hard reset submodules
+      # =========================
+      # HARD SUBMODULE FIX (КЛЮЧЕВОЕ)
+      # =========================
+      - name: Fix submodules (CRITICAL)
         shell: cmd
         run: |
           git submodule sync --recursive
@@ -36,20 +39,12 @@ jobs:
       # =========================
       # CMAKE + NINJA
       # =========================
-      - name: Install tools
+      - name: Install build tools
         run: |
-          choco install ninja cmake -y
+          choco install cmake ninja -y
 
       # =========================
-      # VCPKG (CRITICAL FIX FOR DEPENDENCIES)
-      # =========================
-      - name: Setup vcpkg
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-          C:\vcpkg\bootstrap-vcpkg.bat
-
-      # =========================
-      # QT6
+      # QT6 (ОБЯЗАТЕЛЬНО)
       # =========================
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
@@ -59,30 +54,20 @@ jobs:
           modules: qt5compat
 
       # =========================
-      # VULKAN SDK (FIX YOUR ERROR)
+      # DEBUG (проверка ada)
       # =========================
-      - name: Install Vulkan SDK
-        shell: powershell
-        run: |
-          choco install vulkan-sdk -y
-
-      # =========================
-      # ENV SETUP
-      # =========================
-      - name: Setup environment
+      - name: Check ada exists
         shell: cmd
         run: |
-          set VULKAN_SDK=C:\VulkanSDK\1.3.290.0
-          set CMAKE_PREFIX_PATH=%Qt6_DIR%
+          dir Telegram\cmake\external\ada
 
       # =========================
       # CONFIGURE
       # =========================
-      - name: Configure project
+      - name: Configure
         shell: cmd
         run: |
           cmake -S . -B build -G "Ninja" ^
-            -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake ^
             -DCMAKE_PREFIX_PATH=%Qt6_DIR% ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
@@ -101,6 +86,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Windows-FULL
+          name: AyuGram-Windows
           path: build/Telegram.exe
           if-no-files-found: error
