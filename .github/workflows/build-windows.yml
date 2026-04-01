@@ -12,9 +12,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # =========================
-      # CHECKOUT
-      # =========================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -22,45 +19,46 @@ jobs:
           fetch-depth: 0
 
       # =========================
-      # УЛУЧШЕННЫЙ FIX SUBMODULES (решает проблему с ada)
+      # ИСПРАВЛЕННЫЙ FIX SUBMODULES для AyuGram
       # =========================
-      - name: Fix submodules (CRITICAL)
+      - name: Fix submodules (CRITICAL for AyuGram)
         shell: cmd
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive --force --depth=1
           git submodule foreach --recursive git reset --hard
           git submodule foreach --recursive git clean -xfd
-          
-          echo "=== Extra pass for cmake/external ==="
-          git submodule update --init --recursive --force Telegram/cmake/external
 
       # =========================
-      # Проверка наличия ada (для отладки)
+      # Проверка структуры (для отладки)
       # =========================
-      - name: Check ada directory
+      - name: Check project structure
         shell: cmd
         run: |
-          echo "=== Checking Telegram/cmake/external/ada ==="
-          dir Telegram\cmake\external\ada
-          echo "=== All external submodules ==="
-          dir Telegram\cmake\external
+          echo "=== Root directories ==="
+          dir
+          echo "=== cmake directory ==="
+          dir cmake
+          echo "=== Telegram/cmake (if exists) ==="
+          dir Telegram\cmake 2>nul || echo "Telegram/cmake not found"
+          echo "=== ThirdParty ==="
+          dir Telegram\ThirdParty
 
       # =========================
-      # MSVC Environment
+      # MSVC
       # =========================
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       # =========================
-      # Install CMake + Ninja
+      # CMake + Ninja
       # =========================
       - name: Install build tools
         run: |
           choco install cmake ninja -y
 
       # =========================
-      # Install Qt 6.6.1
+      # Qt 6.6.1
       # =========================
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
@@ -68,10 +66,9 @@ jobs:
           version: 6.6.1
           arch: win64_msvc2019_64
           modules: qt5compat
-          # cache: true   # можно включить для ускорения повторных сборок
 
       # =========================
-      # Configure CMake
+      # Configure
       # =========================
       - name: Configure
         shell: cmd
@@ -81,12 +78,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
             -DTDESKTOP_API_ID=2040 ^
             -DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
-            -DDESKTOP_APP_USE_PACKAGED=OFF ^
-            -DCMAKE_C_COMPILER=cl ^
-            -DCMAKE_CXX_COMPILER=cl
+            -DDESKTOP_APP_USE_PACKAGED=OFF
 
       # =========================
-      # Build Telegram
+      # Build
       # =========================
       - name: Build
         shell: cmd
@@ -94,9 +89,9 @@ jobs:
           cmake --build build --target Telegram --config RelWithDebInfo -- -j %NUMBER_OF_PROCESSORS%
 
       # =========================
-      # Upload artifact
+      # Artifact
       # =========================
-      - name: Upload AyuGram Windows
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Desktop-Windows
