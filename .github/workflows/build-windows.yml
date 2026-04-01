@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop
+name: Build AyuGram Desktop (Windows)
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
       - 'docs/**'
       - '**.txt'
       - 'LICENSE'
-      - 'LEGAL'
   pull_request:
     branches: [ dev, master, main ]
   release:
@@ -20,12 +19,11 @@ concurrency:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-22.04, macos-13]  # macos-13 = Intel, для Apple Silicon можно добавить macos-latest
-      fail-fast: false
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-2022
+    env:
+      BUILD_PATH: ${{ github.workspace }}/TBuild
+      API_ID: ${{ secrets.TDESKTOP_API_ID || '2040' }}
+      API_HASH: ${{ secrets.TDESKTOP_API_HASH || 'b18441a1ff607e10a989891a5462e627' }}
 
     steps:
       - name: Checkout code with submodules
@@ -34,113 +32,122 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # ====================== Windows ======================
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install Python (Windows)
-        if: runner.os == 'Windows'
+      - name: Setup Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Prepare dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
+      - name: Install Git (if needed)
+        shell: pwsh
         run: |
-          cd Telegram\build\prepare
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            choco install git -y --params "/GitAndUnixToolsOnPath"
+          }
+
+      - name: Create build folders
+        shell: pwsh
+        run: |
+          New-Item -Path "${{ env.BUILD_PATH }}/ThirdParty" -ItemType Directory -Force
+          New-Item -Path "${{ env.BUILD_PATH }}/Libraries" -ItemType Directory -Force
+
+      - name: Clone AyuGramDesktop into tdesktop
+        shell: pwsh
+        working-directory: ${{ env.BUILD_PATH }}
+        run: |
+          git clone --recursive https://${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git tdesktop
+
+      # === Prepare libraries (win.bat) ===
+      - name: Prepare dependencies (win.bat)
+        shell: cmd
+        working-directory: ${{ env.BUILD_PATH }}
+        run: |
+          cd tdesktop\Telegram\build\prepare
           call win.bat
 
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
+      # === Apply PDB fix patch (error C1090) ===
+      - name: Apply PDB API call failed patch
+        shell: pwsh
+        working-directory: ${{ env.BUILD_PATH }}/tdesktop
+        run: |
+          $patch = @'
+diff --git a/options_win.cmake b/options_win.cmake
+index c2d66cf..ccceb53 100644
+--- a/options_win.cmake
++++ b/options_win.cmake
+@@ -32,6 +32,7 @@ if (MSVC)
+       /utf-8
+       /W4
+       /MP     # Enable multi process build.
++        /FS
+       /EHsc   # Catch C++ exceptions only, extern C functions never throw a C++ exception.
+       /w15038 # wrong initialization order
+       /w14265 # class has virtual functions, but destructor is not virtual
+@@ -64,7 +65,7 @@ if (MSVC)
+   INTERFACE
+       $<$<CONFIG:Debug>:/NODEFAULTLIB:LIBCMT>
+       $<$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>:/DEBUG:FASTLINK>
+-        $<$<NOT:$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>>:$<IF:$<GENEX_EVAL:$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>,ProgramDatabase>,/DEBUG,/DEBUG:NONE>>
++        $<$<NOT:$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>>:$<IF:$<BOOL:$<GENEX_EVAL:$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>>,/DEBUG,/DEBUG:NONE>>
+       $<$<NOT:$<CONFIG:Debug>>:/OPT:REF>
+       /INCREMENTAL:NO
+       /DEPENDENTLOADFLAG:0x800
+diff --git a/variables.cmake b/variables.cmake
+index d6ac6c5..b2f492a 100644
+--- a/variables.cmake
++++ b/variables.cmake
+@@ -21,7 +21,9 @@ if (DESKTOP_APP_SPECIAL_TARGET STREQUAL "")
+ endif()
+
+ set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "")
+-set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING "")
++set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
++    "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>"
++    CACHE STRING "" FORCE)
+ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
+ option(DESKTOP_APP_TEST_APPS "Build test apps, development only." OFF)
+ option(DESKTOP_APP_LOTTIE_DISABLE_RECOLORING "Disable recoloring of lottie animations." OFF)
+'@
+          $patch | git -C cmake apply --ignore-whitespace --whitespace=nowarn
+
+      # === Configure ===
+      - name: Configure solution (configure.bat)
         shell: cmd
+        working-directory: ${{ env.BUILD_PATH }}/tdesktop/Telegram
         run: |
-          cd Telegram
-          configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+          configure.bat x64 -D TDESKTOP_API_ID=${{ env.API_ID }} -D TDESKTOP_API_HASH=${{ env.API_HASH }}
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      # === Build Debug + Release using MSBuild ===
+      - name: Build Telegram (Debug)
         shell: cmd
+        working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
         run: |
-          cd out
-          cmake --build . --config Release --target Telegram -j %NUMBER_OF_PROCESSORS%
+          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" Telegram.sln /t:Telegram /p:Configuration=Debug /p:Platform=x64 /m /verbosity:minimal
 
-      # ====================== Linux ======================
-      - name: Prepare Linux environment
-        if: runner.os == 'Linux'
+      - name: Build Telegram (Release)
+        shell: cmd
+        working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y docker.io docker-buildx-plugin
-          sudo systemctl start docker
+          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" Telegram.sln /t:Telegram /p:Configuration=Release /p:Platform=x64 /m /verbosity:minimal
 
-      - name: Prepare dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          ./Telegram/build/prepare/linux.sh
-
-      - name: Build with Docker (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          docker run --rm \
-            -u $(id -u) \
-            -v "$PWD:/usr/src/tdesktop" \
-            ghcr.io/telegramdesktop/tdesktop/centos_env:latest \
-            /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
-            -D TDESKTOP_API_ID=2040 \
-            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-
-      # ====================== macOS ======================
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew update
-          brew install python@3.10 git cmake ninja
-
-      - name: Prepare dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          ./Telegram/build/prepare/mac.sh || true
-
-      - name: Configure and Build (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p out && cd out
-          cmake .. \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DTDESKTOP_API_ID=2040 \
-            -DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
-          cmake --build . --config Release --target Telegram -j $(sysctl -n hw.ncpu)
-
-      # ====================== Upload artifacts ======================
-      - name: Upload build artifact
+      # === Upload artifacts ===
+      - name: Upload AyuGram.exe (Debug)
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-${{ matrix.os }}-${{ github.sha }}
-          path: |
-            out/Release/AyuGram.exe
-            out/Release/AyuGram
-            out/Release/AyuGram.app
-            out/bin/Release/AyuGram.exe
-            out/bin/AyuGram
+          name: AyuGram-Debug
+          path: ${{ env.BUILD_PATH }}/tdesktop/out/Debug/AyuGram.exe
           if-no-files-found: warn
-          retention-days: 30
 
-  # Опционально: отдельный job для создания релиза (если нужен авто-релиз)
-  release:
-    needs: build
-    if: github.event_name == 'release' && github.event.action == 'created'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
+      - name: Upload AyuGram.exe (Release)
+        uses: actions/upload-artifact@v4
         with:
-          path: artifacts
+          name: AyuGram-Release
+          path: ${{ env.BUILD_PATH }}/tdesktop/out/Release/AyuGram.exe
+          if-no-files-found: warn
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload full out folder (optional)
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
         with:
-          files: artifacts/**/*
+          name: AyuGram-Full-Build-${{ github.sha }}
+          path: ${{ env.BUILD_PATH }}/tdesktop/out
+          retention-days: 14
