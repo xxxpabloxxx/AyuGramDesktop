@@ -33,6 +33,7 @@ jobs:
           choco install nasm -y
 
       # 💣 Build
+      # 💣 Build
       - name: Full Build (MSVC + Prepare + Build)
         shell: cmd
         run: |
@@ -69,7 +70,8 @@ jobs:
           cd ..\..\..
           cd Telegram
 
-          configure.bat x64 ^
+          :: ДОБАВЛЕН CALL ВОТ ЗДЕСЬ 👇
+          call configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
@@ -78,7 +80,16 @@ jobs:
           echo ============================
 
           cd ..\out
-          cmake --build . --config Release --target Telegram -- /maxcpucount:2
+          cmake --build . --config Release --target Telegram -- /maxcpucount:4
+
+      # 📦 Артефакты
+      - name: Upload all executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-Release
+          # Изменен путь, чтобы брать только собранный клиент 👇
+          path: out/Release/*.exe
+          if-no-files-found: error
 
       # 📦 Артефакты (ВСЕ .exe)
       - name: Upload all executables
