@@ -7,7 +7,6 @@ on:
 
 jobs:
   build:
-    # Обязательно указываем твой личный раннер
     runs-on: self-hosted
 
     steps:
@@ -19,24 +18,26 @@ jobs:
       - name: Full Build (AyuGram)
         shell: cmd
         run: |
-          :: 1. Инициализация переменных окружения MSVC 2022
+          :: 1. Инициализация переменных окружения MSVC 2022 (С ИСПРАВЛЕННЫМИ КАВЫЧКАМИ)
           for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set "VS_PATH=%%i"
+          
+          :: Проверяем путь и вызываем vcvars64 в кавычках
           if exist "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" (
-            call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
+            call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" x64 >nul
+          ) else (
+            echo [ERROR] Visual Studio vcvars64.bat not found! && exit /b 1
           )
 
-          :: 2. Подготовка зависимостей (самый долгий шаг в первый раз)
-          :: Это скачивает и компилирует библиотеки из гайда (Qt, OpenSSL и др.)
+          :: 2. Подготовка зависимостей (win.bat)
           cd Telegram\build\prepare
           call win.bat
 
-          :: 3. Конфигурация проекта с твоими API ключами
+          :: 3. Конфигурация проекта
           cd ..\..\..
           cd Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
           :: 4. Финальная компиляция
-          :: Ставим /maxcpucount:4, чтобы комп не задохнулся, но собирал шустро
           cd ..\out
           cmake --build . --config Release --target Telegram -- /maxcpucount:4 /verbosity:minimal /nologo
 
@@ -46,3 +47,4 @@ jobs:
           name: AyuGram-Windows-EXE
           path: out/Release/Telegram.exe
           if-no-files-found: error
+          
