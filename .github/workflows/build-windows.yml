@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop (GitHub Actions)
+name: Build AyuGram Desktop (Windows)
 
 on:
   workflow_dispatch:
@@ -10,42 +10,68 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # =========================
+      # 1. Checkout
+      # =========================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Init submodules (IMPORTANT FIX)
+      - name: Init submodules (hard reset fix)
+        shell: cmd
         run: git submodule update --init --recursive
 
+      # =========================
+      # 2. MSVC toolchain
+      # =========================
       - name: Setup MSVC (v143)
         uses: ilammy/msvc-dev-cmd@v1
 
+      # =========================
+      # 3. CMake + Ninja
+      # =========================
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
       - name: Install Ninja
         run: choco install ninja -y
 
-      - name: Debug repository structure
-        shell: cmd
-        run: dir
+      # =========================
+      # 4. Qt6 (FIX FOR YOUR ERROR)
+      # =========================
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.6.1
+          arch: win64_msvc2019_64
+          modules: qt5compat
 
+      # =========================
+      # 5. Configure
+      # =========================
       - name: Configure project
         shell: cmd
         run: |
           cmake -S . -B build -G "Ninja" ^
+            -DCMAKE_PREFIX_PATH=%Qt6_DIR% ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
+      # =========================
+      # 6. Build
+      # =========================
       - name: Build
         shell: cmd
         run: |
-          cmake --build build --config Release --target Telegram
+          cmake --build build --target Telegram -- -j 4
 
+      # =========================
+      # 7. Upload artifact
+      # =========================
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Windows-EXE
+          name: AyuGram-Windows
           path: build/Telegram.exe
           if-no-files-found: error
