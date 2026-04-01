@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop (Windows)
+name: Build AyuGram Desktop (Windows FULL FIX)
 
 on:
   workflow_dispatch:
@@ -11,34 +11,45 @@ jobs:
 
     steps:
       # =========================
-      # 1. Checkout
+      # CHECKOUT (ВАЖНО)
       # =========================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - name: Init submodules (hard reset fix)
+      - name: Hard reset submodules
         shell: cmd
-        run: git submodule update --init --recursive
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+          git submodule foreach --recursive git reset --hard
+          git submodule foreach --recursive git clean -xfd
 
       # =========================
-      # 2. MSVC toolchain
+      # MSVC
       # =========================
-      - name: Setup MSVC (v143)
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       # =========================
-      # 3. CMake + Ninja
+      # CMAKE + NINJA
       # =========================
-      - name: Install CMake
-        uses: lukka/get-cmake@latest
-
-      - name: Install Ninja
-        run: choco install ninja -y
+      - name: Install tools
+        run: |
+          choco install ninja cmake -y
 
       # =========================
-      # 4. Qt6 (FIX FOR YOUR ERROR)
+      # VCPKG (CRITICAL FIX FOR DEPENDENCIES)
+      # =========================
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+
+      # =========================
+      # QT6
       # =========================
       - name: Install Qt6
         uses: jurplel/install-qt-action@v4
@@ -48,18 +59,36 @@ jobs:
           modules: qt5compat
 
       # =========================
-      # 5. Configure
+      # VULKAN SDK (FIX YOUR ERROR)
+      # =========================
+      - name: Install Vulkan SDK
+        shell: powershell
+        run: |
+          choco install vulkan-sdk -y
+
+      # =========================
+      # ENV SETUP
+      # =========================
+      - name: Setup environment
+        shell: cmd
+        run: |
+          set VULKAN_SDK=C:\VulkanSDK\1.3.290.0
+          set CMAKE_PREFIX_PATH=%Qt6_DIR%
+
+      # =========================
+      # CONFIGURE
       # =========================
       - name: Configure project
         shell: cmd
         run: |
           cmake -S . -B build -G "Ninja" ^
+            -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake ^
             -DCMAKE_PREFIX_PATH=%Qt6_DIR% ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       # =========================
-      # 6. Build
+      # BUILD
       # =========================
       - name: Build
         shell: cmd
@@ -67,11 +96,11 @@ jobs:
           cmake --build build --target Telegram -- -j 4
 
       # =========================
-      # 7. Upload artifact
+      # ARTIFACT
       # =========================
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Windows
+          name: AyuGram-Windows-FULL
           path: build/Telegram.exe
           if-no-files-found: error
