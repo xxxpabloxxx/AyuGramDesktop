@@ -21,27 +21,28 @@ jobs:
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Prepare build (win.bat)
+      - name: Setup build directory
         shell: cmd
         run: |
-          cd Telegram\build\prepare
-          call win.bat
+          cd Telegram
+          if not exist out mkdir out
 
       - name: Configure project
         shell: cmd
         run: |
           cd Telegram
-          call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+          cmake -S . -B out -G "NMake Makefiles" ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       - name: Build
         shell: cmd
         run: |
-          cd Telegram\out
-          cmake --build . --config Release --target Telegram -- /maxcpucount:4 /verbosity:minimal /nologo
+          cmake --build Telegram\out --config Release --target Telegram -- /maxcpucount:4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-EXE
-          path: Telegram/out/Release/Telegram.exe
+          path: Telegram/out/Telegram.exe
           if-no-files-found: error
