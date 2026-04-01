@@ -50,7 +50,6 @@ jobs:
         run: |
           git clone --recursive https://github.com/${{ github.repository }}.git tdesktop
 
-      # === Prepare libraries ===
       - name: Prepare dependencies (win.bat)
         shell: cmd
         working-directory: ${{ env.BUILD_PATH }}
@@ -58,12 +57,12 @@ jobs:
           cd tdesktop\Telegram\build\prepare
           call win.bat
 
-      # === Apply PDB fix patch (error C1090) ===
-      - name: Apply PDB API call failed patch
+      # === Исправленный патч (без проблем с YAML) ===
+      - name: Apply PDB API call failed patch (C1090)
         shell: pwsh
         working-directory: ${{ env.BUILD_PATH }}/tdesktop
         run: |
-          $patch = @'
+          $patchContent = @"
 diff --git a/options_win.cmake b/options_win.cmake
 index c2d66cf..ccceb53 100644
 --- a/options_win.cmake
@@ -88,7 +87,7 @@ index c2d66cf..ccceb53 100644
 diff --git a/variables.cmake b/variables.cmake
 index d6ac6c5..b2f492a 100644
 --- a/variables.cmake
-+++ b/variables.cmake
++++ a/variables.cmake
 @@ -21,7 +21,9 @@ if (DESKTOP_APP_SPECIAL_TARGET STREQUAL "")
  endif()
 
@@ -100,42 +99,29 @@ index d6ac6c5..b2f492a 100644
  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
  option(DESKTOP_APP_TEST_APPS "Build test apps, development only." OFF)
  option(DESKTOP_APP_LOTTIE_DISABLE_RECOLORING "Disable recoloring of lottie animations." OFF)
-'@
-          $patch | git -C cmake apply --ignore-whitespace --whitespace=nowarn || echo "Patch already applied or minor difference"
+"@
+          $patchContent | git -C cmake apply --ignore-whitespace --whitespace=nowarn || echo "Patch applied or already exists (ignoring error)"
 
-      # === Configure ===
       - name: Configure solution (configure.bat)
         shell: cmd
         working-directory: ${{ env.BUILD_PATH }}/tdesktop/Telegram
         run: |
           configure.bat x64 -D TDESKTOP_API_ID=${{ env.API_ID }} -D TDESKTOP_API_HASH=${{ env.API_HASH }}
 
-      # === Build Debug and Release ===
       - name: Build Telegram (Debug)
         shell: cmd
         working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
         run: |
           "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" ^
-            Telegram.sln ^
-            /t:Telegram ^
-            /p:Configuration=Debug ^
-            /p:Platform=x64 ^
-            /m ^
-            /verbosity:minimal
+            Telegram.sln /t:Telegram /p:Configuration=Debug /p:Platform=x64 /m /verbosity:minimal
 
       - name: Build Telegram (Release)
         shell: cmd
         working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
         run: |
           "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" ^
-            Telegram.sln ^
-            /t:Telegram ^
-            /p:Configuration=Release ^
-            /p:Platform=x64 ^
-            /m ^
-            /verbosity:minimal
+            Telegram.sln /t:Telegram /p:Configuration=Release /p:Platform=x64 /m /verbosity:minimal
 
-      # === Upload artifacts ===
       - name: Upload AyuGram.exe (Debug)
         uses: actions/upload-artifact@v4
         with:
@@ -149,11 +135,3 @@ index d6ac6c5..b2f492a 100644
           name: AyuGram-Release
           path: ${{ env.BUILD_PATH }}/tdesktop/out/Release/AyuGram.exe
           if-no-files-found: warn
-
-      - name: Upload full build folder (for Release)
-        if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: AyuGram-Full-Build-${{ github.sha }}
-          path: ${{ env.BUILD_PATH }}/tdesktop/out
-          retention-days: 30
