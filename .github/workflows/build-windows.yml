@@ -1,99 +1,146 @@
-name: Build AyuGram Desktop (Windows)
+name: Build AyuGram Desktop
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main, dev ]
+    branches: [ dev, master, main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**.txt'
+      - 'LICENSE'
+      - 'LEGAL'
   pull_request:
-    branches: [ main, dev ]
+    branches: [ dev, master, main ]
+  release:
+    types: [ created ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-13]  # macos-13 = Intel, для Apple Silicon можно добавить macos-latest
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      # =========================
-      # ИСПРАВЛЕННЫЙ FIX SUBMODULES для AyuGram
-      # =========================
-      - name: Fix submodules (CRITICAL for AyuGram)
-        shell: cmd
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --force --depth=1
-          git submodule foreach --recursive git reset --hard
-          git submodule foreach --recursive git clean -xfd
-
-      # =========================
-      # Проверка структуры (для отладки)
-      # =========================
-      - name: Check project structure
-        shell: cmd
-        run: |
-          echo "=== Root directories ==="
-          dir
-          echo "=== cmake directory ==="
-          dir cmake
-          echo "=== Telegram/cmake (if exists) ==="
-          dir Telegram\cmake 2>nul || echo "Telegram/cmake not found"
-          echo "=== ThirdParty ==="
-          dir Telegram\ThirdParty
-
-      # =========================
-      # MSVC
-      # =========================
-      - name: Setup MSVC
+      # ====================== Windows ======================
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
-      # =========================
-      # CMake + Ninja
-      # =========================
-      - name: Install build tools
-        run: |
-          choco install cmake ninja -y
-
-      # =========================
-      # Qt 6.6.1
-      # =========================
-      - name: Install Qt6
-        uses: jurplel/install-qt-action@v4
         with:
-          version: 6.6.1
-          arch: win64_msvc2019_64
-          modules: qt5compat
+          arch: x64
 
-      # =========================
-      # Configure
-      # =========================
-      - name: Configure
+      - name: Install Python (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Prepare dependencies (Windows)
+        if: runner.os == 'Windows'
         shell: cmd
         run: |
-          cmake -S . -B build -G "Ninja" ^
-            -DCMAKE_PREFIX_PATH=%Qt6_DIR% ^
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-            -DTDESKTOP_API_ID=2040 ^
-            -DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
-            -DDESKTOP_APP_USE_PACKAGED=OFF
+          cd Telegram\build\prepare
+          call win.bat
 
-      # =========================
-      # Build
-      # =========================
-      - name: Build
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
         shell: cmd
         run: |
-          cmake --build build --target Telegram --config RelWithDebInfo -- -j %NUMBER_OF_PROCESSORS%
+          cd Telegram
+          configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      # =========================
-      # Artifact
-      # =========================
-      - name: Upload artifact
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cd out
+          cmake --build . --config Release --target Telegram -j %NUMBER_OF_PROCESSORS%
+
+      # ====================== Linux ======================
+      - name: Prepare Linux environment
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y docker.io docker-buildx-plugin
+          sudo systemctl start docker
+
+      - name: Prepare dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ./Telegram/build/prepare/linux.sh
+
+      - name: Build with Docker (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm \
+            -u $(id -u) \
+            -v "$PWD:/usr/src/tdesktop" \
+            ghcr.io/telegramdesktop/tdesktop/centos_env:latest \
+            /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
+            -D TDESKTOP_API_ID=2040 \
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      # ====================== macOS ======================
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install python@3.10 git cmake ninja
+
+      - name: Prepare dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ./Telegram/build/prepare/mac.sh || true
+
+      - name: Configure and Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p out && cd out
+          cmake .. \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTDESKTOP_API_ID=2040 \
+            -DTDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          cmake --build . --config Release --target Telegram -j $(sysctl -n hw.ncpu)
+
+      # ====================== Upload artifacts ======================
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Desktop-Windows
-          path: build/Telegram.exe
-          if-no-files-found: error
+          name: AyuGram-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            out/Release/AyuGram.exe
+            out/Release/AyuGram
+            out/Release/AyuGram.app
+            out/bin/Release/AyuGram.exe
+            out/bin/AyuGram
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Опционально: отдельный job для создания релиза (если нужен авто-релиз)
+  release:
+    needs: build
+    if: github.event_name == 'release' && github.event.action == 'created'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
