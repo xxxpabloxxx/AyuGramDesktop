@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop (Windows)
+name: Build AyuGram Desktop (Self-Hosted)
 
 on:
   workflow_dispatch:
@@ -7,61 +7,42 @@ on:
 
 jobs:
   build:
+    # Обязательно указываем твой личный раннер
     runs-on: self-hosted
 
-    env:
-      NUMBER_OF_PROCESSORS: 4
-      # Убираем желтый варнинг про Node.js
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
-      - name: Checkout code with submodules
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies (Perl + NASM)
-        shell: powershell
-        # --no-progress убирает спам в логах при скачивании
-        run: |
-          choco install strawberryperl nasm -y --no-progress
-
-      - name: Full Build (Prepare + Configure + Build)
+      - name: Full Build (AyuGram)
         shell: cmd
         run: |
-          :: 1. Активация окружения MSVC (без лишнего вывода)
-          IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul
-          ) ELSE IF EXIST "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul
-          ) ELSE (
-            call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
+          :: 1. Инициализация переменных окружения MSVC 2022
+          for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set "VS_PATH=%%i"
+          if exist "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" (
+            call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
           )
 
-          :: 2. Подготовка
+          :: 2. Подготовка зависимостей (самый долгий шаг в первый раз)
+          :: Это скачивает и компилирует библиотеки из гайда (Qt, OpenSSL и др.)
           cd Telegram\build\prepare
           call win.bat
 
-          :: 3. Конфигурация
+          :: 3. Конфигурация проекта с твоими API ключами
           cd ..\..\..
           cd Telegram
-          call configure.bat x64 ^
-            -D TDESKTOP_API_ID=2040 ^
-            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+          call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-          :: 4. Сборка (добавлен /v:m для минимальных логов)
+          :: 4. Финальная компиляция
+          :: Ставим /maxcpucount:4, чтобы комп не задохнулся, но собирал шустро
           cd ..\out
-          cmake --build . --config Release --target Telegram -- /maxcpucount:2 /verbosity:minimal
+          cmake --build . --config Release --target Telegram -- /maxcpucount:4 /verbosity:minimal /nologo
 
-      - name: Upload executable
+      - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Release
-          # Забираем только готовый экзешник, без мусора
-          path: out/Release/*.exe
+          name: AyuGram-Windows-EXE
+          path: out/Release/Telegram.exe
           if-no-files-found: error
