@@ -15,34 +15,37 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Init submodules (IMPORTANT FIX)
+        run: git submodule update --init --recursive
+
       - name: Setup MSVC (v143)
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
-      - name: Setup build directory
+      - name: Install Ninja
+        run: choco install ninja -y
+
+      - name: Debug repository structure
         shell: cmd
-        run: |
-          cd Telegram
-          if not exist out mkdir out
+        run: dir
 
       - name: Configure project
         shell: cmd
         run: |
-          cd Telegram
-          cmake -S . -B out -G "NMake Makefiles" ^
+          cmake -S . -B build -G "Ninja" ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       - name: Build
         shell: cmd
         run: |
-          cmake --build Telegram\out --config Release --target Telegram -- /maxcpucount:4
+          cmake --build build --config Release --target Telegram
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-EXE
-          path: Telegram/out/Telegram.exe
+          path: build/Telegram.exe
           if-no-files-found: error
