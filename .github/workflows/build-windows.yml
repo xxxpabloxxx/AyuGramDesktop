@@ -18,26 +18,27 @@ jobs:
       - name: Full Build (AyuGram)
         shell: cmd
         run: |
-          :: 1. Инициализация переменных окружения MSVC 2022 (С ИСПРАВЛЕННЫМИ КАВЫЧКАМИ)
-          for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set "VS_PATH=%%i"
+          :: 1. Инициализация через прямой путь (VS 2022 Community)
+          :: Если у тебя версия Pro или Enterprise, поменяй Community на свою в пути ниже
+          set "VCVARS=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
           
-          :: Проверяем путь и вызываем vcvars64 в кавычках
-          if exist "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" (
-            call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat" x64 >nul
+          if exist "%VCVARS%" (
+              call "%VCVARS%"
           ) else (
-            echo [ERROR] Visual Studio vcvars64.bat not found! && exit /b 1
+              echo [ERROR] vcvars64.bat NOT FOUND at %VCVARS%
+              exit /b 1
           )
 
-          :: 2. Подготовка зависимостей (win.bat)
+          :: 2. Подготовка (win.bat)
           cd Telegram\build\prepare
           call win.bat
 
-          :: 3. Конфигурация проекта
+          :: 3. Конфигурация
           cd ..\..\..
           cd Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-          :: 4. Финальная компиляция
+          :: 4. Сборка
           cd ..\out
           cmake --build . --config Release --target Telegram -- /maxcpucount:4 /verbosity:minimal /nologo
 
