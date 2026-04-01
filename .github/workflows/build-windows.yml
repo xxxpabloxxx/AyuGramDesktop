@@ -57,12 +57,12 @@ jobs:
           cd tdesktop\Telegram\build\prepare
           call win.bat
 
-      # === Исправленный патч (без проблем с YAML) ===
-      - name: Apply PDB API call failed patch (C1090)
+      # === Надёжный способ применения патча (решает проблему с YAML) ===
+      - name: Apply PDB fix patch (C1090 error)
         shell: pwsh
         working-directory: ${{ env.BUILD_PATH }}/tdesktop
         run: |
-          $patchContent = @"
+          $patch = @'
 diff --git a/options_win.cmake b/options_win.cmake
 index c2d66cf..ccceb53 100644
 --- a/options_win.cmake
@@ -70,11 +70,11 @@ index c2d66cf..ccceb53 100644
 @@ -32,6 +32,7 @@ if (MSVC)
        /utf-8
        /W4
-       /MP     # Enable multi process build.
+       /MP
 +        /FS
-       /EHsc   # Catch C++ exceptions only, extern C functions never throw a C++ exception.
-       /w15038 # wrong initialization order
-       /w14265 # class has virtual functions, but destructor is not virtual
+       /EHsc
+       /w15038
+       /w14265
 @@ -64,7 +65,7 @@ if (MSVC)
    INTERFACE
        $<$<CONFIG:Debug>:/NODEFAULTLIB:LIBCMT>
@@ -87,7 +87,7 @@ index c2d66cf..ccceb53 100644
 diff --git a/variables.cmake b/variables.cmake
 index d6ac6c5..b2f492a 100644
 --- a/variables.cmake
-+++ a/variables.cmake
++++ b/variables.cmake
 @@ -21,7 +21,9 @@ if (DESKTOP_APP_SPECIAL_TARGET STREQUAL "")
  endif()
 
@@ -99,8 +99,10 @@ index d6ac6c5..b2f492a 100644
  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
  option(DESKTOP_APP_TEST_APPS "Build test apps, development only." OFF)
  option(DESKTOP_APP_LOTTIE_DISABLE_RECOLORING "Disable recoloring of lottie animations." OFF)
-"@
-          $patchContent | git -C cmake apply --ignore-whitespace --whitespace=nowarn || echo "Patch applied or already exists (ignoring error)"
+'@
+          Set-Content -Path "pdb_fix.patch" -Value $patch -Encoding UTF8
+          git -C cmake apply --ignore-whitespace --whitespace=nowarn pdb_fix.patch 2>&1 | Out-Null
+          Write-Host "Patch applied (or was already applied)"
 
       - name: Configure solution (configure.bat)
         shell: cmd
