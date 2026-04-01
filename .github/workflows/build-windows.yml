@@ -1,4 +1,4 @@
-name: Build AyuGram Desktop (Self-Hosted)
+name: Build AyuGram Desktop (GitHub Actions)
 
 on:
   workflow_dispatch:
@@ -15,37 +15,33 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Full Build (AyuGram)
+      - name: Setup MSVC (v143)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Prepare build (win.bat)
         shell: cmd
         run: |
-          :: 1. Инициализация через прямой путь (VS 2022 Community)
-          :: Если у тебя версия Pro или Enterprise, поменяй Community на свою в пути ниже
-          set "VCVARS=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
-          
-          if exist "%VCVARS%" (
-              call "%VCVARS%"
-          ) else (
-              echo [ERROR] vcvars64.bat NOT FOUND at %VCVARS%
-              exit /b 1
-          )
-
-          :: 2. Подготовка (win.bat)
           cd Telegram\build\prepare
           call win.bat
 
-          :: 3. Конфигурация
-          cd ..\..\..
+      - name: Configure project
+        shell: cmd
+        run: |
           cd Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-          :: 4. Сборка
-          cd ..\out
+      - name: Build
+        shell: cmd
+        run: |
+          cd Telegram\out
           cmake --build . --config Release --target Telegram -- /maxcpucount:4 /verbosity:minimal /nologo
 
-      - name: Upload Result
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-EXE
-          path: out/Release/Telegram.exe
+          path: Telegram/out/Release/Telegram.exe
           if-no-files-found: error
-          
