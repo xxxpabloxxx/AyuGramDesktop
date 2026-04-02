@@ -21,13 +21,21 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Enable MSBuild
-        uses: microsoft/setup-msbuild@v2
+      # This is the key change: full VS developer environment
+      - name: Setup MSVC Developer Environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64      # or x86_amd64
+          toolset: 143   # optional, for VS 2022
+
+      # Optional but recommended: install latest CMake if needed
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
 
       - name: Prepare dependencies
         shell: cmd
         run: |
-          Telegram\build\prepare\win.bat
+          call Telegram\build\prepare\win.bat
 
       - name: Configure
         shell: cmd
@@ -38,7 +46,7 @@ jobs:
       - name: Build Debug
         shell: cmd
         run: |
-          msbuild out\Telegram.sln /p:Configuration=Debug /p:Platform=x64 /m
+          msbuild out\Telegram.sln /p:Configuration=Debug /p:Platform=x64 /m /verbosity:normal
 
       - name: Upload Debug artifact
         uses: actions/upload-artifact@v4
