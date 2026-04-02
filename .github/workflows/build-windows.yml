@@ -13,10 +13,6 @@ jobs:
   build:
     runs-on: windows-2022
 
-    strategy:
-      matrix:
-        configuration: [Debug, Release]
-
     steps:
       - name: Checkout code with submodules
         uses: actions/checkout@v4
@@ -44,13 +40,14 @@ jobs:
           cd Telegram
           configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
-            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
+            -D CMAKE_BUILD_TYPE=Release
 
       - name: Build
         shell: cmd
         run: |
           msbuild out\Telegram.sln ^
-            /p:Configuration=${{ matrix.configuration }} ^
+            /p:Configuration=Release ^
             /p:Platform=x64 ^
             /m ^
             /verbosity:normal
@@ -58,7 +55,7 @@ jobs:
       - name: Prepare ZIP
         shell: powershell
         run: |
-          $config = "${{ matrix.configuration }}"
+          $config = "Release"
           $zip = "AyuGram-Windows-$config.zip"
 
           if (Test-Path "out") {
@@ -68,12 +65,10 @@ jobs:
       - name: Upload artifact (Actions tab)
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Windows-${{ matrix.configuration }}
-          path: AyuGram-Windows-${{ matrix.configuration }}.zip
+          name: AyuGram-Windows-Release
+          path: AyuGram-Windows-Release.zip
 
-      # 🔥 RELEASE ONLY FOR Release BUILD
       - name: Create GitHub Release
-        if: matrix.configuration == 'Release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
