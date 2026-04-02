@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - name: Checkout
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -21,35 +21,45 @@ jobs:
         with:
           python-version: "3.10"
 
-      # This is the key change: full VS developer environment
-      - name: Setup MSVC Developer Environment
+      # Самый надёжный способ инициализации окружения VS 2022
+      - name: Setup MSVC Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64      # or x86_amd64
-          toolset: 143   # optional, for VS 2022
+          arch: x64
+          # toolset удалён специально — чтобы избежать ошибки "Toolset directory for version '143' was not found"
 
-      # Optional but recommended: install latest CMake if needed
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
+      # Альтернатива (если ilammy снова упадёт) — раскомментируй и закомментируй верхний шаг:
+      # - name: Setup MSVC Environment manually
+      #   shell: cmd
+      #   run: |
+      #     call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+      #     echo MSVC environment initialized successfully
 
-      - name: Prepare dependencies
+      - name: Prepare dependencies (Telegram libraries, Qt, vcpkg и т.д.)
         shell: cmd
         run: |
-          call Telegram\build\prepare\win.bat
+          Telegram\build\prepare\win.bat
 
-      - name: Configure
+      - name: Configure project
         shell: cmd
         run: |
           cd Telegram
-          configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+          configure.bat x64 ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       - name: Build Debug
         shell: cmd
         run: |
-          msbuild out\Telegram.sln /p:Configuration=Debug /p:Platform=x64 /m /verbosity:normal
+          msbuild out\Telegram.sln ^
+            /p:Configuration=Debug ^
+            /p:Platform=x64 ^
+            /m ^
+            /verbosity:normal
 
       - name: Upload Debug artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-Debug
           path: out\Debug\*
+          retention-days: 7
