@@ -1,17 +1,12 @@
-name: Build AyuGram Windows
+name: Build AyuGram Release
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - plugin-loader-work
-
-permissions:
-  contents: write
 
 jobs:
   build:
-    runs-on: windows-2022
+    # Оставляем самописный раннер, раз ты собираешь у себя
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code with submodules
@@ -19,60 +14,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Setup MSVC Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Prepare dependencies
+      - name: Full Build (AyuGram Release)
         shell: cmd
         run: |
-          Telegram\build\prepare\win.bat
+          :: 1. Подключаем твою установленную Visual Studio 18 (2025)
+          set "VCVARS=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
+          if exist "%VCVARS%" (
+              call "%VCVARS%" x64
+          ) else (
+              echo [ERROR] Visual Studio vcvars64.bat not found!
+              exit /b 1
+          )
 
-      - name: Configure project
-        shell: cmd
-        run: |
+          :: 2. Подготовка библиотек (пропускаем msys, если он тупит)
+          :: Мы добавляем автоматический пропуск, чтобы билд не падал на сетевых ошибках MSYS
+          cd Telegram\build\prepare
+          echo s | call win.bat
+          
+          :: 3. Конфигурация под Release
+          cd ..\..\..
           cd Telegram
-          configure.bat x64 ^
-            -D TDESKTOP_API_ID=2040 ^
-            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
-            -D CMAKE_BUILD_TYPE=Release
+          :: Мы НЕ используем configure.bat напрямую, чтобы избежать ошибки Ninja
+          cmake -G "Ninja" -B ../out -D CMAKE_BUILD_TYPE=Release -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+          
+          :: 4. Сборка (Release)
+          cd ..\out
+          cmake --build . --config Release --target Telegram -- /maxcpucount:4
 
-      - name: Build
-        shell: cmd
-        run: |
-          msbuild out\Telegram.sln ^
-            /p:Configuration=Release ^
-            /p:Platform=x64 ^
-            /m ^
-            /verbosity:normal
-
-      - name: Prepare ZIP
-        shell: powershell
-        run: |
-          $config = "Release"
-          $zip = "AyuGram-Windows-$config.zip"
-
-          if (Test-Path "out") {
-            Compress-Archive -Path "out\*" -DestinationPath $zip -Force
-          }
-
-      - name: Upload artifact (Actions tab)
+      - name: Upload Release Artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-Release
-          path: AyuGram-Windows-Release.zip
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: AyuGram build ${{ github.run_number }}
-          files: AyuGram-Windows-Release.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          :: Путь к готовому .exe файлу
+          path: out/Telegram/Release/AyuGram.exe
+          retention-days: 7
