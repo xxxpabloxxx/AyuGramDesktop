@@ -1,12 +1,14 @@
-name: Build AyuGram Release
+name: Build AyuGram Windows
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - plugin-loader-work
 
 jobs:
   build:
-    # Оставляем самописный раннер, раз ты собираешь у себя
-    runs-on: self-hosted
+    runs-on: windows-2022
 
     steps:
       - name: Checkout code with submodules
@@ -14,37 +16,42 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Full Build (AyuGram Release)
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # MSVC environment
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare dependencies (Telegram libraries, Qt, vcpkg и т.д.)
         shell: cmd
         run: |
-          :: 1. Подключаем твою установленную Visual Studio 18 (2025)
-          set "VCVARS=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
-          if exist "%VCVARS%" (
-              call "%VCVARS%" x64
-          ) else (
-              echo [ERROR] Visual Studio vcvars64.bat not found!
-              exit /b 1
-          )
+          Telegram\build\prepare\win.bat
 
-          :: 2. Подготовка библиотек (пропускаем msys, если он тупит)
-          :: Мы добавляем автоматический пропуск, чтобы билд не падал на сетевых ошибках MSYS
-          cd Telegram\build\prepare
-          echo s | call win.bat
-          
-          :: 3. Конфигурация под Release
-          cd ..\..\..
+      - name: Configure project
+        shell: cmd
+        run: |
           cd Telegram
-          :: Мы НЕ используем configure.bat напрямую, чтобы избежать ошибки Ninja
-          cmake -G "Ninja" -B ../out -D CMAKE_BUILD_TYPE=Release -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-          
-          :: 4. Сборка (Release)
-          cd ..\out
-          cmake --build . --config Release --target Telegram -- /maxcpucount:4
+          configure.bat x64 ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      - name: Upload Release Artifact
+      - name: Build Release
+        shell: cmd
+        run: |
+          msbuild out\Telegram.sln ^
+            /p:Configuration=Release ^
+            /p:Platform=x64 ^
+            /m ^
+            /verbosity:normal
+
+      - name: Upload Release artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-Release
-          :: Путь к готовому .exe файлу
-          path: out/Telegram/Release/AyuGram.exe
+          path: out\Release\*
           retention-days: 7
