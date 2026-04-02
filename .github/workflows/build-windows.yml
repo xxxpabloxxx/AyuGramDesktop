@@ -1,139 +1,47 @@
-name: Build AyuGram Desktop (Windows)
+name: Build AyuGram Windows
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ dev, master, main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '**.txt'
-      - 'LICENSE'
-      - 'LEGAL'
-  pull_request:
-    branches: [ dev, master, main ]
-  release:
-    types: [ created ]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches:
+      - plugin-loader-work
 
 jobs:
   build:
     runs-on: windows-2022
-    env:
-      BUILD_PATH: ${{ github.workspace }}/TBuild
-      API_ID: ${{ secrets.TDESKTOP_API_ID || '2040' }}
-      API_HASH: ${{ secrets.TDESKTOP_API_HASH || 'b18441a1ff607e10a989891a5462e627' }}
 
     steps:
-      - name: Checkout code with submodules
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
       - name: Setup Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
-      - name: Create build folders
-        shell: pwsh
-        run: |
-          New-Item -Path "${{ env.BUILD_PATH }}/ThirdParty" -ItemType Directory -Force
-          New-Item -Path "${{ env.BUILD_PATH }}/Libraries" -ItemType Directory -Force
+      - name: Enable MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Clone AyuGramDesktop
-        shell: pwsh
-        working-directory: ${{ env.BUILD_PATH }}
-        run: |
-          git clone --recursive https://github.com/${{ github.repository }}.git tdesktop
-
-      - name: Prepare dependencies (win.bat)
+      - name: Prepare dependencies
         shell: cmd
-        working-directory: ${{ env.BUILD_PATH }}
         run: |
-          cd tdesktop\Telegram\build\prepare
-          call win.bat
+          Telegram\build\prepare\win.bat
 
-      # === Надёжный способ применения патча (решает проблему с YAML) ===
-      - name: Apply PDB fix patch (C1090 error)
-        shell: pwsh
-        working-directory: ${{ env.BUILD_PATH }}/tdesktop
-        run: |
-          $patch = @'
-diff --git a/options_win.cmake b/options_win.cmake
-index c2d66cf..ccceb53 100644
---- a/options_win.cmake
-+++ b/options_win.cmake
-@@ -32,6 +32,7 @@ if (MSVC)
-       /utf-8
-       /W4
-       /MP
-+        /FS
-       /EHsc
-       /w15038
-       /w14265
-@@ -64,7 +65,7 @@ if (MSVC)
-   INTERFACE
-       $<$<CONFIG:Debug>:/NODEFAULTLIB:LIBCMT>
-       $<$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>:/DEBUG:FASTLINK>
--        $<$<NOT:$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>>:$<IF:$<GENEX_EVAL:$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>,ProgramDatabase>,/DEBUG,/DEBUG:NONE>>
-+        $<$<NOT:$<AND:$<CONFIG:Debug>,$<BOOL:${build_win64}>>>:$<IF:$<BOOL:$<GENEX_EVAL:$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>>,/DEBUG,/DEBUG:NONE>>
-       $<$<NOT:$<CONFIG:Debug>>:/OPT:REF>
-       /INCREMENTAL:NO
-       /DEPENDENTLOADFLAG:0x800
-diff --git a/variables.cmake b/variables.cmake
-index d6ac6c5..b2f492a 100644
---- a/variables.cmake
-+++ b/variables.cmake
-@@ -21,7 +21,9 @@ if (DESKTOP_APP_SPECIAL_TARGET STREQUAL "")
- endif()
-
- set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "")
--set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING "")
-+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
-+    "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>"
-+    CACHE STRING "" FORCE)
- set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "")
- option(DESKTOP_APP_TEST_APPS "Build test apps, development only." OFF)
- option(DESKTOP_APP_LOTTIE_DISABLE_RECOLORING "Disable recoloring of lottie animations." OFF)
-'@
-          Set-Content -Path "pdb_fix.patch" -Value $patch -Encoding UTF8
-          git -C cmake apply --ignore-whitespace --whitespace=nowarn pdb_fix.patch 2>&1 | Out-Null
-          Write-Host "Patch applied (or was already applied)"
-
-      - name: Configure solution (configure.bat)
+      - name: Configure
         shell: cmd
-        working-directory: ${{ env.BUILD_PATH }}/tdesktop/Telegram
         run: |
-          configure.bat x64 -D TDESKTOP_API_ID=${{ env.API_ID }} -D TDESKTOP_API_HASH=${{ env.API_HASH }}
+          cd Telegram
+          configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      - name: Build Telegram (Debug)
+      - name: Build Debug
         shell: cmd
-        working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
         run: |
-          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" ^
-            Telegram.sln /t:Telegram /p:Configuration=Debug /p:Platform=x64 /m /verbosity:minimal
+          msbuild out\Telegram.sln /p:Configuration=Debug /p:Platform=x64 /m
 
-      - name: Build Telegram (Release)
-        shell: cmd
-        working-directory: ${{ env.BUILD_PATH }}/tdesktop/out
-        run: |
-          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" ^
-            Telegram.sln /t:Telegram /p:Configuration=Release /p:Platform=x64 /m /verbosity:minimal
-
-      - name: Upload AyuGram.exe (Debug)
+      - name: Upload Debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AyuGram-Debug
-          path: ${{ env.BUILD_PATH }}/tdesktop/out/Debug/AyuGram.exe
-          if-no-files-found: warn
-
-      - name: Upload AyuGram.exe (Release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: AyuGram-Release
-          path: ${{ env.BUILD_PATH }}/tdesktop/out/Release/AyuGram.exe
-          if-no-files-found: warn
+          name: AyuGram-Windows-Debug
+          path: out\Debug\*
