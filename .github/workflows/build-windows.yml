@@ -75,5 +75,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-Release
-          path: out\Telegram\Release\Telegram.exe
+          path: out\Release\*
           retention-days: 7
