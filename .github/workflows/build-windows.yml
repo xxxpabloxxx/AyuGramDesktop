@@ -26,10 +26,26 @@ jobs:
         with:
           arch: x64
 
+      - name: Configure pagefile
+        uses: al-cheb/configure-pagefile-action@v1.4
+        with:
+          minimum-size: 8GB
+          maximum-size: 16GB
+          disk-root: "D:"
+
       - name: Prepare dependencies (Telegram libraries, Qt, vcpkg и т.д.)
         shell: cmd
         run: |
           Telegram\build\prepare\win.bat
+
+      - name: Apply PDB fix
+        shell: pwsh
+        run: |
+          $file = "cmake\options_win.cmake"
+          (Get-Content $file -Raw) -replace '(/MP\s+# Enable multi process build\.)', "`$1`n      /FS" | Set-Content $file
+
+          $varfile = "cmake\variables.cmake"
+          (Get-Content $varfile -Raw) -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING ""\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)' | Set-Content $varfile
 
       - name: Configure project
         shell: cmd
@@ -38,28 +54,7 @@ jobs:
           configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-      - name: Apply PDB fix
-        shell: pwsh
-        run: |
-          $patch = @'
-          diff --git a/options_win.cmake b/options_win.cmake
-          index c2d66cf..ccceb53 100644
-          --- a/options_win.cmake
-          +++ b/options_win.cmake
-          @@ -32,6 +32,7 @@ if (MSVC)
-                 /utf-8
-                 /W4
-                 /MP     # Enable multi process build.
-          +        /FS
-                 /EHsc   # Catch C++ exceptions only, extern C functions never throw a C++ exception.
-          '@
-          # Проще — просто sed-замена
-          $file = "cmake/options_win.cmake"
-          (Get-Content $file) -replace '/MP     # Enable multi process build\.', "/MP     # Enable multi process build.`n      /FS" | Set-Content $file
-          
-          $varfile = "cmake/variables.cmake"
-          (Get-Content $varfile) -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase".*\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)' | Set-Content $varfile
-          
+
       - name: Build Release
         shell: cmd
         run: |
@@ -68,12 +63,17 @@ jobs:
             /p:Platform=x64 ^
             /p:DebugInformationFormat=OldStyle ^
             /p:nodeReuse=false ^
-            /m:2 ^
+            /m:1 ^
             /verbosity:normal
+
+      - name: Show output structure
+        shell: cmd
+        run: |
+          dir out\ /s /b
 
       - name: Upload Release artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-Release
-          path: out\Release\*
+          path: out\Telegram\Release\Telegram.exe
           retention-days: 7
