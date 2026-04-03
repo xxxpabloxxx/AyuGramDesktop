@@ -38,7 +38,28 @@ jobs:
           configure.bat x64 ^
             -D TDESKTOP_API_ID=2040 ^
             -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-
+      - name: Apply PDB fix
+        shell: pwsh
+        run: |
+          $patch = @'
+          diff --git a/options_win.cmake b/options_win.cmake
+          index c2d66cf..ccceb53 100644
+          --- a/options_win.cmake
+          +++ b/options_win.cmake
+          @@ -32,6 +32,7 @@ if (MSVC)
+                 /utf-8
+                 /W4
+                 /MP     # Enable multi process build.
+          +        /FS
+                 /EHsc   # Catch C++ exceptions only, extern C functions never throw a C++ exception.
+          '@
+          # Проще — просто sed-замена
+          $file = "cmake/options_win.cmake"
+          (Get-Content $file) -replace '/MP     # Enable multi process build\.', "/MP     # Enable multi process build.`n      /FS" | Set-Content $file
+          
+          $varfile = "cmake/variables.cmake"
+          (Get-Content $varfile) -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase".*\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)' | Set-Content $varfile
+          
       - name: Build Release
         shell: cmd
         run: |
