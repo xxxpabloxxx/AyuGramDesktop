@@ -27,6 +27,7 @@ jobs:
           arch: x64
 
       - name: Configure pagefile
+        continue-on-error: true
         uses: al-cheb/configure-pagefile-action@v1.4
         with:
           minimum-size: 8GB
@@ -65,11 +66,6 @@ jobs:
             /p:nodeReuse=false ^
             /m:1 ^
             /verbosity:normal
-
-      - name: Show output structure
-        shell: cmd
-        run: |
-          dir out\ /s /b
 
       - name: Upload Release artifact
         uses: actions/upload-artifact@v4
