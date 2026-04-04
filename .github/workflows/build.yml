@@ -28,7 +28,13 @@ jobs:
 
       - name: Prepare dependencies (Telegram libraries, Qt, vcpkg и т.д.)
         shell: cmd
+        env:
+          HTTP_PROXY: socks5://socks:socks@45.88.172.229:44382
+          HTTPS_PROXY: socks5://socks:socks@45.88.172.229:44382
+          ALL_PROXY: socks5://socks:socks@45.88.172.229:44382
         run: |
+          git config --global http.proxy socks5://socks:socks@45.88.172.229:44382
+          git config --global https.proxy socks5://socks:socks@45.88.172.229:44382
           Telegram\build\prepare\win.bat
 
       - name: Apply PDB fix
@@ -59,7 +65,7 @@ jobs:
             /p:Platform=x64 ^
             /p:DebugInformationFormat=OldStyle ^
             /p:nodeReuse=false ^
-            /m:4 ^                # ← больше потоков
+            /m:4 ^
             /verbosity:normal
 
       - name: Upload Release artifact
