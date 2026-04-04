@@ -59,7 +59,7 @@ jobs:
             /p:Platform=x64 ^
             /p:DebugInformationFormat=OldStyle ^
             /p:nodeReuse=false ^
-            /m:1 ^
+            /m:4 ^                # ← больше потоков
             /verbosity:normal
 
       - name: Upload Release artifact
