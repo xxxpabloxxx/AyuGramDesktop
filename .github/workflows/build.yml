@@ -1,0 +1,70 @@
+name: Build AyuGram Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - plugin-loader-work
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare dependencies (Telegram libraries, Qt, vcpkg и т.д.)
+        shell: cmd
+        run: |
+          Telegram\build\prepare\win.bat
+
+      - name: Apply PDB fix
+        shell: pwsh
+        run: |
+          $file = "cmake\options_win.cmake"
+          $content = Get-Content $file -Raw
+          $content = $content -replace '(/MP)(\s+# Enable multi process build\.)', '/MP2$2'
+          $content = $content -replace '(/MP2\s+# Enable multi process build\.)', "`$1`n      /FS"
+          Set-Content $file $content
+
+          $varfile = "cmake\variables.cmake"
+          (Get-Content $varfile -Raw) -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING ""\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)' | Set-Content $varfile
+
+      - name: Configure project
+        shell: cmd
+        run: |
+          cd Telegram
+          configure.bat x64 ^
+            -D TDESKTOP_API_ID=2040 ^
+            -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      - name: Build Release
+        shell: cmd
+        run: |
+          msbuild out\Telegram.sln ^
+            /p:Configuration=Release ^
+            /p:Platform=x64 ^
+            /p:DebugInformationFormat=OldStyle ^
+            /p:nodeReuse=false ^
+            /m:1 ^
+            /verbosity:normal
+
+      - name: Upload Release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-Windows-Release
+          path: out\Release\*
+          retention-days: 7
